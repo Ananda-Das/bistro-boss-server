@@ -4,12 +4,15 @@ const port = process.env.PORT || 5000;
 const cors = require("cors");
 require("dotenv").config();
 
-app.use(cors());
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "http://localhost:5174", "https://job-hunter-188ab.web.app", "https://job-hunter-188ab.firebaseapp.com"],
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 const { MongoClient, ServerApiVersion } = require("mongodb");
-
-
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.qfsxze0.mongodb.net/?retryWrites=true&w=majority`;
 
@@ -29,10 +32,34 @@ async function run() {
 
     //collections Names
     const menuCollection = client.db("birstoDB").collection("menu");
+    const reviewCollection = client.db("birstoDB").collection("reviews");
+    const cartCollection = client.db("birstoDB").collection("carts");
 
+    //get menu
     app.get("/api/v1/menu", async (req, res) => {
       const cursor = menuCollection.find();
       const result = await cursor.toArray();
+      res.send(result);
+    });
+
+    //get reviews
+    app.get("/api/v1/reviews", async (req, res) => {
+      const result = await reviewCollection.find().toArray();
+      res.send(result);
+    });
+
+    //carts collection
+
+    //carts get data
+    app.get("/api/v1/carts", async(req, res)=>{
+      const result= await cartCollection.find().toArray();
+      res.send(result)
+    })
+
+    //carts post data
+    app.post("/api/v1/carts", async (req, res) => {
+      const cartItem = req.body;
+      const result = await cartCollection.insertOne(cartItem);
       res.send(result);
     });
 
