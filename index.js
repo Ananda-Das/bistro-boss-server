@@ -1,6 +1,7 @@
 const express = require("express");
 const app = express();
 const port = process.env.PORT || 5000;
+const jwt = require("jsonwebtoken");
 const cors = require("cors");
 require("dotenv").config();
 
@@ -11,6 +12,23 @@ app.use(
   })
 );
 app.use(express.json());
+
+//middlewares
+const verifyToken = (req, res, next) => {
+  console.log(req.headers.authorization);
+  if (!req.headers.authorization) {
+    return res.status(401).send({ message: "forbidden access" });
+  }
+  const token = req.headers.authorization.split(" ")[1];
+
+  jwt.verify(token, process.env.ACCESS_TOKEN, (err, decoded) => {
+    if (err) {
+      return res.status(401).send({ message: "forbidden access" });
+    }
+    req.decoded = decoded;
+    next();
+  });
+};
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
@@ -36,10 +54,18 @@ async function run() {
     const reviewCollection = client.db("birstoDB").collection("reviews");
     const cartCollection = client.db("birstoDB").collection("carts");
 
+    //jwt related api
+    app.post("/api/v1/jwt", async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN, { expiresIn: "1h" });
+      res.send({ token });
+    });
+
     //users related api
 
     //get all the user
-    app.get("/api/v1/users", async (req, res) => {
+    app.get("/api/v1/users", verifyToken, async (req, res) => {
+      console.log(req.headers);
       const result = await userCollection.find().toArray();
       res.send(result);
     });
