@@ -15,7 +15,7 @@ app.use(express.json());
 
 //middlewares
 const verifyToken = (req, res, next) => {
-  console.log(req.headers.authorization);
+  // console.log(req.headers.authorization);
   if (!req.headers.authorization) {
     return res.status(401).send({ message: "forbidden access" });
   }
@@ -28,6 +28,18 @@ const verifyToken = (req, res, next) => {
     req.decoded = decoded;
     next();
   });
+};
+
+//use verify Admin after verify Token
+const verifyAdmin = async (req, res, next) => {
+  const email = req.decoded.email;
+  const query = { email: email };
+  const user = await userCollection.findOne(query);
+  const isAdmin = user?.role === "admin";
+  if (!isAdmin) {
+    return res.status(403).send({ message: "forbidden access" });
+  }
+  next();
 };
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
@@ -63,9 +75,23 @@ async function run() {
 
     //users related api
 
+    app.get("/api/v1/users/admin/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "unauthorized access" });
+      }
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      let admin = false;
+      if (user) {
+        admin = user?.role === "admin";
+      }
+      res.send({ admin });
+    });
+
     //get all the user
     app.get("/api/v1/users", verifyToken, async (req, res) => {
-      console.log(req.headers);
+      // console.log(req.headers);
       const result = await userCollection.find().toArray();
       res.send(result);
     });
@@ -108,6 +134,12 @@ async function run() {
     app.get("/api/v1/menu", async (req, res) => {
       const cursor = menuCollection.find();
       const result = await cursor.toArray();
+      res.send(result);
+    });
+
+    app.post("/api/v1/menu", verifyToken, verifyAdmin, async (req, res) => {
+      const item = req.body;
+      const result = await menuCollection.insertOne(item);
       res.send(result);
     });
 
