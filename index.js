@@ -5,6 +5,8 @@ const jwt = require("jsonwebtoken");
 const cors = require("cors");
 require("dotenv").config();
 
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
 app.use(
   cors({
     origin: ["http://localhost:5173", "http://localhost:5174", "https://job-hunter-188ab.web.app", "https://job-hunter-188ab.firebaseapp.com"],
@@ -30,18 +32,6 @@ const verifyToken = (req, res, next) => {
   });
 };
 
-//use verify Admin after verify Token
-const verifyAdmin = async (req, res, next) => {
-  const email = req.decoded.email;
-  const query = { email: email };
-  const user = await userCollection.findOne(query);
-  const isAdmin = user?.role === "admin";
-  if (!isAdmin) {
-    return res.status(403).send({ message: "forbidden access" });
-  }
-  next();
-};
-
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.qfsxze0.mongodb.net/?retryWrites=true&w=majority`;
@@ -65,6 +55,19 @@ async function run() {
     const userCollection = client.db("birstoDB").collection("users");
     const reviewCollection = client.db("birstoDB").collection("reviews");
     const cartCollection = client.db("birstoDB").collection("carts");
+    const paymentCollection = client.db("birstoDB").collection("payments");
+
+    //use verify Admin after verify Token
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      const isAdmin = user?.role === "admin";
+      if (!isAdmin) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      next();
+    };
 
     //jwt related api
     app.post("/api/v1/jwt", async (req, res) => {
@@ -137,6 +140,15 @@ async function run() {
       res.send(result);
     });
 
+    //delete menu
+    app.delete("/api/v1/menu/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await menuCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    //add menu
     app.post("/api/v1/menu", verifyToken, verifyAdmin, async (req, res) => {
       const item = req.body;
       const result = await menuCollection.insertOne(item);
@@ -172,6 +184,38 @@ async function run() {
       const query = { _id: new ObjectId(id) };
       const result = await cartCollection.deleteOne(query);
       res.send(result);
+    });
+
+    //payments
+    app.post("/create-payment-intent", async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
+
+    //payment related api
+    app.post("/payments", async (req, res) => {
+      const payment = req.body;
+      const paymentResult = await paymentCollection.insertOne(payment);
+
+      //delete item from the cart
+      const query = {
+        _id: {
+          $in: payment.cartIds.map((id) => new ObjectId(id)),
+        },
+      };
+
+      const deleteResult = await cartCollection.deleteMany(query);
+
+      res.send({ paymentResult, deleteResult });
     });
 
     // Send a ping to confirm a successful connection
